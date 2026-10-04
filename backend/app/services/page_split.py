@@ -1,4 +1,9 @@
-"""Ticket vs page numbers are produced on different paths."""
+"""Ticket vs page numbers are produced on different paths.
+
+小票、满仓名单、汇总待补集合全部派生自同一份补货行，不另起口径：
+满仓名单只收缺口为 0（full/overbooked）的道；冷热相邻冲突置 0 道仍有缺口，
+不算满仓，也不进待补集合，原因统一为「冷热相邻冲突」。
+"""
 from __future__ import annotations
 
 
@@ -16,33 +21,22 @@ def present_ticket(payload: dict) -> dict:
 
 
 def present_summary(location_id: int, payload: dict) -> dict:
+    # 汇总直接透传引擎按实际补量算出的结果，不在分页层再按缺口另算一遍
     lines = _lines(payload)
-    gap_sum = 0
-    zero_fill = 0
-    for l in lines:
-        g = int(l.get("gap") or 0)
-        f = int(l.get("fill_qty") or 0)
-        if g > 0:
-            gap_sum += g
-        else:
-            gap_sum += max(f, 0)
-        if f == 0:
-            zero_fill += 1
+    pending_slots = payload.get("pending_slots")
+    if pending_slots is None:
+        pending_slots = [l.get("slot_no") for l in lines if int(l.get("fill_qty") or 0) > 0]
     return {
         "location_id": location_id,
         "order_id": payload.get("id"),
         "status": payload.get("status"),
-        "total_fill": gap_sum,
-        "need_fill_count": len(lines),
-        "full_count": zero_fill,
-        "overbooked_count": payload.get("overbooked_count", 0),
-        "blocked_count": payload.get("blocked_count", 0),
-        "capped_count": payload.get("capped_count", 0),
-        "sku_cap_full_count": payload.get("sku_cap_full_count", 0),
-        "max_fill_qty": 0,
-        "fill_open": payload.get("fill_open"),
-        "fill_start_minute": payload.get("fill_start_minute"),
-        "fill_end_minute": payload.get("fill_end_minute"),
+        "total_fill": int(payload.get("total_fill") or 0),
+        "need_fill_count": int(payload.get("need_fill_count") or 0),
+        "full_count": int(payload.get("full_count") or 0),
+        "overbooked_count": int(payload.get("overbooked_count") or 0),
+        "conflict_count": int(payload.get("conflict_count") or 0),
+        # 本轮待补集合：真正出正补量的货道，冲突置 0 道不在其中
+        "pending_slots": pending_slots,
     }
 
 
@@ -50,13 +44,10 @@ def present_full(location_id: int, payload: dict) -> dict:
     lines = _lines(payload)
     lanes = []
     for l in lines:
-        status = str(l.get("status") or "")
-        fill = int(l.get("fill_qty") or 0)
-        code = str(l.get("reject_code") or l.get("reason") or "")
-        if fill == 0 or status in ("full", "blocked", "capped", "sku_cap_full", "overbooked"):
-            lanes.append(l)
-            continue
-        if "满" in code or "封锁" in code or "超占" in code:
+        gap = int(l.get("gap") or 0)
+        # 只认真正没缺口的道（gap<=0：满仓/超占）。冷热冲突置 0 道仍有缺口，
+        # 不得进满仓名单，也不靠 reason 文案（封锁/已满之类）判断。
+        if gap <= 0:
             lanes.append(l)
     return {"location_id": location_id, "lanes": lanes}
 
