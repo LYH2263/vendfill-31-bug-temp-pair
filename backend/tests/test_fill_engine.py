@@ -51,13 +51,13 @@ def test_adjacency_predicate():
     assert not is_cold_hot_adjacent("hot", "hot")
 
 
-def test_seed_a1_cold_a2_hot_later_registered_zero():
-    # A1 冷(先登记 id=1)、A2 热(后登记 id=2)，均有缺口
+def test_seed_a1_cold_a2_hot_later_slot_zeroed():
+    # A1 冷(编号靠前)、A2 热(编号靠后)，均有缺口
     lanes = [_lane(1, "A1", "cold"), _lane(2, "A2", "hot")]
     lines = build_fill_lines(lanes)
     a1, a2 = by_slot(lines, "A1"), by_slot(lines, "A2")
-    assert a1.fill_qty == a1.gap == 15          # 先道按缺口正常补
-    assert a2.fill_qty == 0 and a2.gap == 15     # 后登记道强制 0
+    assert a1.fill_qty == a1.gap == 15          # 靠前道按缺口正常补
+    assert a2.fill_qty == 0 and a2.gap == 15     # 靠后道强制 0
     assert a2.reason == CONFLICT_REASON
     assert a1.reason == ""
     # 冲突道仍是待补（有缺口），不计入满仓
@@ -69,13 +69,13 @@ def test_seed_a1_cold_a2_hot_later_registered_zero():
     assert s["total_fill"] == 15                 # 不得两边都出正补量
 
 
-def test_later_by_id_not_slot_order_wins():
-    # 编号上 A1 在前但后登记（id 更大）：置 0 的是后登记的 A1，与编号先后无关
+def test_later_by_slot_order_zeroed_regardless_of_id():
+    # 编号 A1 靠前但登记 id 更大：置 0 的是编号靠后的 A2，与登记先后无关
     lanes = [_lane(3, "A2", "cold"), _lane(10, "A1", "hot")]
     lines = build_fill_lines(lanes)
-    assert by_slot(lines, "A2").fill_qty == 15
-    a1 = by_slot(lines, "A1")
-    assert a1.fill_qty == 0 and a1.reason == CONFLICT_REASON
+    assert by_slot(lines, "A1").fill_qty == 15
+    a2 = by_slot(lines, "A2")
+    assert a2.fill_qty == 0 and a2.reason == CONFLICT_REASON
 
 
 def test_change_zone_recalculates_no_double_positive():
@@ -83,7 +83,7 @@ def test_change_zone_recalculates_no_double_positive():
     lanes = [_lane(1, "A1", "hot"), _lane(2, "A2", "hot")]
     s0 = summarize(build_fill_lines(lanes))
     assert s0["total_fill"] == 30 and s0["conflict_count"] == 0
-    # A1 改冷后重新生成：后登记 A2 置 0，禁止仍按旧温区出双正补量
+    # A1 改冷后重新生成：编号靠后 A2 置 0，禁止仍按旧温区出双正补量
     lanes[0]["zone"] = "cold"
     lines = build_fill_lines(lanes)
     fills = sorted(l.fill_qty for l in lines)
@@ -104,7 +104,7 @@ def test_unzoned_treated_as_hot():
 
 def test_adjacency_only_between_neighbors_by_slot():
     # A1 冷、A2 热(冲突置0)、A3 冷：A1/A3 不相邻不互相影响；
-    # A3 与 A2 也冲突，但 A3 后登记 → A3 同样置 0，A1 正常补
+    # A3 与 A2 也冲突，A3 编号靠后 → A3 同样置 0，A1 正常补
     lanes = [_lane(1, "A1", "cold"), _lane(2, "A2", "hot"), _lane(3, "A3", "cold")]
     lines = build_fill_lines(lanes)
     assert by_slot(lines, "A1").fill_qty == 15
@@ -121,7 +121,7 @@ def test_reason_is_standalone_sentence():
 
 
 def test_full_lane_not_flagged_conflict():
-    # 后登记道本已满仓（缺口0）：补量为0但不写冲突原因
+    # 编号靠后道本已满仓（缺口0）：补量为0但不写冲突原因
     lanes = [_lane(1, "A1", "cold"),
              _lane(2, "A2", "hot", cap=10, stock=10, transit=0)]
     a2 = by_slot(build_fill_lines(lanes), "A2")

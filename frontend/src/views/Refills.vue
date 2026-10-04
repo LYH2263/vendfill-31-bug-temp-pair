@@ -14,7 +14,7 @@ function statusText(l: any) {
 </script>
 <template>
   <h1>补货小票</h1>
-  <p class="sub">gap = 容量 − 库存 − 在途 · 冷热邻道后登记道补量置 0 · 收据纸样式</p>
+  <p class="sub">gap = 容量 − 库存 − 在途 · 冷热邻道编号靠后道补量置 0 · 收据纸样式</p>
   <button class="btn" @click="run">生成补货单</button>
   <div style="margin-top:1rem" v-if="data">
     <div class="vf-receipt">

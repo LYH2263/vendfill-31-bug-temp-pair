@@ -37,8 +37,10 @@ def update_lane(lane_id: int, body: LaneUpdate, db: Session = Depends(get_db)):
     lane = db.get(Lane, lane_id)
     if not lane:
         raise HTTPException(404, "货道不存在")
-    if body.zone is not None:
-        zone = body.zone.strip() or None
+    # 字段传了（含显式 null）才更新：null/空串 = 清除温区标记，未标按热兼容；
+    # 字段未传则保持原值。改完后重新生成必须吃到新标记。
+    if "zone" in body.model_fields_set:
+        zone = (body.zone or "").strip() or None
         if zone is not None and zone not in VALID_ZONES:
             raise HTTPException(400, "温区仅支持 cold / hot")
         lane.zone = zone
